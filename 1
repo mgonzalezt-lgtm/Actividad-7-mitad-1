@@ -1,0 +1,111 @@
+import numpy as np
+from numpy import sin, cos, pi
+import matplotlib.pyplot as plt
+
+# ==========================================
+# Configuración de estilo global (Tipo LaTeX/Mathematica)
+# ==========================================
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['mathtext.fontset'] = 'cm'
+
+# ==========================================
+# 1. Parámetros del sistema según la imagen
+# ==========================================
+q = 2.0
+alpha = 1.0 / q  # Coeficiente de amortiguamiento (1/q = 0.5)
+omega = 2.0 / 3.0  # Frecuencia de forzamiento (omega_D = 2/3)
+gamma = 1.1799  # Amplitud de forzamiento fija
+T = 2 * pi / omega  # Periodo de forzamiento
+
+# ==========================================
+# 2. Malla de Condiciones Iniciales y Método Numérico
+# ==========================================
+# Generamos una malla de condiciones iniciales (x0, v0) para trazar la estructura del mapa
+n_x = 40
+n_v = 40
+x0_vals = np.linspace(-3.0, 3.0, n_x)
+v0_vals = np.linspace(0.0, 2.5, n_v)
+X0, V0 = np.meshgrid(x0_vals, v0_vals)
+x0_flat = X0.flatten()
+v0_flat = V0.flatten()
+n_orbits = len(x0_flat)
+
+Trans = 400  # Periodos transitorios a descartar
+Nkeep = 150  # Periodos a registrar por órbita
+steps_per_T = 300
+dt = T / steps_per_T
+
+# Estado inicial vectorizado
+x = x0_flat.copy()
+v = v0_flat.copy()
+y_state = np.concatenate([x, v])
+
+
+# ==========================================
+# 3. Dinámica del sistema y Método RK4
+# ==========================================
+def dyn(t, y):
+    x_val = y[:n_orbits]
+    v_val = y[n_orbits:]
+    dx = v_val
+    # Ecuación: \ddot{\theta} + (1/q)\dot{\theta} + \sin\theta = \gamma \cos(\omega_D t)
+    dv = -alpha * v_val - sin(x_val) + gamma * cos(omega * t)
+    return np.concatenate([dx, dv])
+
+
+def rk4(f, t, y, h):
+    k1 = h * f(t, y)
+    k2 = h * f(t + h / 2, y + k1 / 2)
+    k3 = h * f(t + h / 2, y + k2 / 2)
+    k4 = h * f(t + h, y + k3)
+    return y + (k1 + 2 * k2 + 2 * k3 + k4) / 6
+
+
+# ==========================================
+# 4. Integración y Puntos Estroboscópicos
+# ==========================================
+x_strobe_list = []
+v_strobe_list = []
+
+total_periods = Trans + Nkeep
+total_steps = total_periods * steps_per_T
+
+for step in range(total_steps):
+    current_time = step * dt
+    y_state = rk4(dyn, current_time, y_state, dt)
+
+    completed_period = (step + 1) // steps_per_T
+    if (step + 1) % steps_per_T == 0:
+        if completed_period > Trans:
+            x_strobe_list.append(y_state[:n_orbits].copy())
+            v_strobe_list.append(y_state[n_orbits:].copy())
+
+x_strobe = np.array(x_strobe_list)
+v_strobe = np.array(v_strobe_list)
+
+# ==========================================
+# 5. Gráfica del Mapa Estroboscópico
+# ==========================================
+fig, ax = plt.subplots(figsize=(8, 6))
+
+ax.scatter(x_strobe.flatten(), v_strobe.flatten(),
+           s=0.3, color='purple', linewidths=0, rasterized=True)
+
+# Configuración de ejes con ticks hacia adentro y marco cerrado
+ax.tick_params(axis='both', labelsize=12, direction='in', top=True, right=True)
+
+ax.set_xlabel(r'$\theta$', fontsize=14)
+ax.set_ylabel(r'$\dot{\theta}$', fontsize=14)
+ax.set_xlim(-3.5, 3.5)
+ax.set_ylim(-0.5, 2.5)
+ax.set_box_aspect(0.65)
+
+# Título indicando los parámetros de la pantalla
+ax.set_title(r'Mapa estroboscópico: $\gamma = 1.1799$', fontsize=14)
+
+# Ajuste de márgenes
+plt.subplots_adjust(left=0.12, right=0.95, top=0.90, bottom=0.12)
+
+# Guardar figura en máxima calidad
+plt.savefig('Mapa_Estroboscopico_Gamma_11799.pdf', format='pdf', bbox_inches='tight', dpi=1200)
+plt.show()
